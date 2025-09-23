@@ -1,2 +1,2 @@
 # mat-basometro
-Repository with files of the analyzes carried out in the paper that explores the multi-aspect trajectories approach in the field of political science using voting data from parliamentarians in the Chamber of Deputies.
+Project files of the analyzes carried out for the paper under review that explores the multi-aspect trajectories approach in the field of political science using voting data of parliamentarians from the Chamber of Deputies in Brazil.
