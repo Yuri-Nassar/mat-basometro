@@ -102,6 +102,6 @@ This project is released under the [MIT License](https://opensource.org/licenses
 
 - Yuri Santos, UFSC, Brazil.
 - Marcus Torres, UFPE, Brazil.
-- Tarlis Portela, UFPR, Brazil.
-- Jonathan Silva, LSESP, United Kingdom.
+- Tarlis Portela, UTFPR, Brazil.
+- Jonathan Silva, LSEPS, United Kingdom.
 - Jônata Tyska, UFSC, Brazi.
