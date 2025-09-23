@@ -1,0 +1,866 @@
+---
+title: "Limpeza de Base - UNV"
+author: "Marcus Vinícius Torres"
+institute: "PNUD - Programa Justiça Plural"
+format: html
+editor: visual
+self-contained: true
+self-contained-math: true
+---
+
+<!-- ATENÇÃO -->
+
+<!-- ESSE DOCUMENTO É DE PROPRIEDADE DO PROJETO JUSTIÇA PLURAL - PNUD/CNJ -->
+
+<!-- QUAISQUER CÓPIAS DAS INFORMAÇÕES QUE AQUI ESTÃO NECESSITAM DE APROVAÇÃO PRÉVIA  -->
+
+# Introdução
+
+O objetivo desse documento é de explicar o processo de ETL (Extração, Tratamento e Limpeza) da base de Voluntários da ONU (UNV). Com uma quantidade de informações muito rica e também muito diversa, o desafio nesse projeto foi tentar criar categorias mais quantitativas e padronizadas na base de dados. Como padrão, todas as variáveis finais criadas nesse projeto terão uma identificação *\_jp,* de modo a indicar que elas foram editadas pelo Programa Justiça Plural.
+
+É importante deixar claro que essa base não está completamente bruta. Antes ela passou por algum processo de limpeza, principalmente ao verificar se havia applications duplicados ou que não passavam por certo crivo de formação mínima. Também foram criadas algumas variáveis dicotômicas. Inicialmente essas variáveis não estarão com essa identificação.
+
+Por favor, em caso de dúvidas, entre em contato com o projeto em [justiça.plural\@unpd.org](justiça.plural@unpd.org)
+
+# Baixando os pacotes de dados.
+
+```{r}
+#Apagar o enviroment
+rm(list = ls())
+
+#install.packages(pacman)
+library(pacman)
+#OBSERVAÇÃO: NEM TODOS OS PACOTES SAO NECESSÁRIOS PARA ESSE PROJETO
+p_load(readxl,writexl,skimr,dplyr,basedosdados,data.table, dplyr,genderBR, tidyverse, vroom,stringr, stringi, tm, reactable,lubridate,dygraphs, stargazer, geobr,sf,rio,readr,tidyr,classInt,Microsoft365R,readODS,jsonlite,fuzzyjoin,readxl, purrr,datadictionary,arrow,geobr)
+
+```
+
+Aqui podemos ler o arquivo de inscrições.
+
+```{r}
+# Ler um arquivo ODS (primeira planilha por padrão)
+unv <- read_ods("data/raw/inscrições final completa - limpa e organizada.ods")
+unv_var_bruto <- names(unv)
+```
+
+Aqui vamos verificar o nome das variáveis e suas classes. Como se pode verificar, elas estão um pouco sujas.
+
+```{r}
+#Verficando a classe das variáveis e as variáveis.
+glimpse(unv)
+```
+
+Para facilitar, limpei as colunas para nomes um pouco mais fáceis de operacionalizar
+
+```{r}
+#Usando o janitor para automaticamente limpar as colunas
+unv <- janitor::clean_names(unv)
+#colocando as variáveis pós janitor
+unv_var_janitor <- names(unv)
+```
+
+Aqui podemos ver os novos nomes delas.
+
+```{r, include = F}
+glimpse(unv)
+```
+
+Fazer um doc comparando
+
+```{r}
+comparativo_nomes <- tibble::tibble(
+  antes = unv_var_bruto,
+  depois = unv_var_janitor
+)
+
+# Visualizar
+print(comparativo_nomes)
+
+# Exportar (opcional)
+write_xlsx(comparativo_nomes, "comparativo_nomes.xlsx")
+```
+
+A variável categoria foi ajustada anteriormente para justamente facilitar o ETL e desconsiderar todas as que tinham escrito o termo *não considerar*.
+
+```{r}
+nao_considerar <- unv %>%
+filter(str_detect(categoria, "não considerar"))
+
+```
+
+Aqui vamos filtrar todos os que não devem ser considerados.
+
+```{r}
+unv <- unv %>%
+  anti_join(nao_considerar, by = "categoria")
+
+```
+
+Quem são os casos não considerados?
+
+Dos 1799 casos, a grande maior parte (82%) ficou por fora por ter menos de 3 anos de experiência exigidos, seguidos por duplicadas antigas, e que não indicou quaisquer grupos vulnerabilizados, que é preciso destacar que foi uma quantidade bem reduzida.
+
+```{r}
+nao_considerar %>% count(categoria)
+```
+
+# DDD dos telefones
+
+Aqui vamos ver se conseguimos extrair o DDD dos números. Como medida de robustez, criei uma variável de confiabilidade que seria identificar se tem 11 núméros
+
+```{r}
+unv <- unv %>%
+  mutate(
+    numero_limpo = str_replace_all(telefone_xx_xxxx_xxxx, "[^0-9]", ""),  # Remove tudo que não seja número
+    ddd = str_extract(numero_limpo, "^[0-9]{2}"),         # Captura os dois primeiros dígitos
+    tem_11_digitos = str_length(numero_limpo) == 11       # Verifica se tem 11 dígitos
+  ) 
+```
+
+Aqui estou usando um dado disponbilizado por um usuário do Github que liberou os DDDs por estado para identificar.
+
+```{r}
+# URL do JSON
+url <- "https://gist.githubusercontent.com/ThadeuLuz/797b60972f74f3080b32642eb36481a5/raw/50eff700db88f10f5d619b85f8684145b91e1888/dddsBrasileiros.json"
+
+# Ler o JSON da URL e converter para um data.frame
+ddd <- fromJSON(url) 
+
+#salvar rapidaemente essa base dos ddds
+write_json(ddd, "data/raw/ddd.json")
+```
+
+```{r}
+#selecionar a base apenas com o estado
+ddd_estado <- as.data.frame(ddd["estadoPorDdd"])
+
+#salvar rapidaemente essa base dos ddds
+write.csv2(ddd_estado, "data/raw/ddd_estado.csv")
+
+
+#tranformar ela de wide para long
+ddd_estado <- ddd_estado %>%  pivot_longer(cols = everything(), names_to = "DDD", values_to = "UF")
+
+#remover tudo que não é número
+ddd_estado <- ddd_estado %>% mutate(DDD = str_remove_all(DDD, "[^0-9]"))
+```
+
+Fazendo um left join com os dados
+
+```{r}
+unv <- unv %>% left_join(ddd_estado, by = c("ddd" = "DDD") )
+```
+
+Verificando quantas Unidades Federativas conseguimos pegar através dos dados via UF. De todos os casos, apenas 83 não foram coletados.
+
+```{r}
+table(is.na(unv$UF))
+```
+
+```{r}
+table(is.na(unv$cep_limpo))
+```
+
+Agora relocando as variáveis
+
+```{r}
+  unv <- unv %>% relocate(numero_limpo,ddd,tem_11_digitos,UF,.after = telefone_xx_xxxx_xxxx)
+```
+
+# CEP
+
+Aqui vamos tentar colocar um algoritmo que identifique CEPs da variável endereço. Como foi permitido com que os candidatos colocassem valores variados, isso criou uma confusão
+
+```{r}
+# Expressão regular para capturar os CEPs válidos
+padrao_cep <- "([0-9]{5}-[0-9]{3})|([0-9]{8})|([0-9]{2}\\.[0-9]{3}-[0-9]{3})"
+
+# Criando a variável de CEP extraído
+unv <- unv %>%
+  mutate(cep_extraido = str_extract(endereco, padrao_cep),
+         cep_limpo = str_replace_all(cep_extraido, "[^0-9]", "") ) %>% relocate(cep_extraido,.after = endereco) %>%  relocate(cep_limpo,.after = cep_extraido)
+
+```
+
+Aqui vamos baixar uma base que existe em csv com vários ceps
+
+```{r}
+#lendo lista de variáveis com municipios e ceps
+ceps <- read.csv("https://gist.githubusercontent.com/tamnil/792a6a66f6df9fc028041587cfca0c3d/raw/ee0290101cfc7c93f99f2ecc5ac9302df148194a/ceps.csv")
+```
+
+```{r}
+#Salvando a base just in case
+write.csv2(ceps, "data/raw/ceps.csv")
+
+#ajustar as variáveis
+ceps <- janitor::clean_names(ceps)
+
+#Tirando os casos que nao possuem nome do municipio
+ceps_clean <- ceps %>% filter(cidade != "")
+
+#selectionando as variáveis
+unv_ceps <- unv %>% select(numero_identificacao_inscricao,cep_limpo) %>% mutate(cep_limpo = as.numeric(cep_limpo))
+
+
+#isso aqui ainda não bateu
+ unv_ceps <- fuzzy_left_join(
+   unv_ceps, ceps_clean,
+   by = c("cep_limpo" = "cep_de", "cep_limpo" = "cep_ate"),
+   match_fun = list(`>=`, `<=`)
+ )
+ 
+
+ #Só selecionar casos unicos
+ unv_ceps <- unv_ceps %>% unique()
+ 
+ #criando a variável de robustez
+ unv_ceps <- unv_ceps %>% mutate(cep_limpo_num = as.numeric(cep_limpo)) %>% #transformei em numerico
+                         mutate(cep_maior = if_else(cep_limpo_num >= cep_de , 1,0)) %>% #condição de ser maior
+                         mutate(cep_menor = if_else(cep_limpo_num <= cep_ate , 1,0)) %>% #e menor
+                        mutate(cep_soma = cep_menor + cep_maior)  #somei
+ 
+ unv_ceps_limpos <- unv_ceps %>% filter(cep_soma == 2) %>% unique() #filtrei dos menores que 2
+ 
+ 
+```
+
+```{r}
+unv_ceps_teste <- unv %>% select(numero_identificacao_inscricao, ddd:UF)
+
+unv_ceps_teste <- unv_ceps_teste %>% left_join(unv_ceps_limpos, by = "numero_identificacao_inscricao") 
+
+
+unv_ceps_teste_limpo <- unv_ceps_teste %>% select(-cep_ate,-cep_de) %>% distinct()
+
+#aqui podemos ver que a variável que está dando problema é o cep até
+unv_ceps_teste_duplicados <- unv_ceps_teste_limpo %>%
+  group_by(numero_identificacao_inscricao) %>%
+  summarise(n =n()) %>% 
+  filter(n > 1) %>%
+  ungroup()
+
+```
+
+Depois da limpeza, o numero de casos está igual
+
+```{r}
+nrow(unv_ceps_teste_limpo)
+```
+
+Finalmente, fazendo o merge
+
+```{r}
+
+# Criar um data frame só com a variável final e o ID
+unv_ceps_teste_limpo_select <- unv_ceps_teste_limpo %>% select(numero_identificacao_inscricao,uf,cidade)  %>% rename(uf_cep = uf, cidade_cep = cidade)
+
+#Fazer um merge
+unv <- unv %>% 
+  left_join(unv_ceps_teste_limpo_select, by = c("numero_identificacao_inscricao")) %>% 
+  relocate(uf_cep,cidade_cep, .after = UF)
+```
+
+# UF do Endereço
+
+Criando um tibble com as siglas
+
+```{r}
+estados_br <- tibble::tibble(
+  sigla = c("AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", 
+            "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", 
+            "RS", "RO", "RR", "SC", "SP", "SE", "TO"),
+  nome  = c("Acre", "Alagoas", "Amapá", "Amazonas", "Bahia", "Ceará", "Distrito Federal",
+            "Espírito Santo", "Goiás", "Maranhão", "Mato Grosso", "Mato Grosso do Sul",
+            "Minas Gerais", "Pará", "Paraíba", "Paraná", "Pernambuco", "Piauí", 
+            "Rio de Janeiro", "Rio Grande do Norte", "Rio Grande do Sul", "Rondônia", 
+            "Roraima", "Santa Catarina", "São Paulo", "Sergipe", "Tocantins")
+)
+
+```
+
+Criando a função para identifcar
+
+```{r}
+detectar_siglas_estados <- function(textos, estados_df) {
+  textos <- tolower(textos)
+  nomes_siglas <- tolower(c(estados_df$nome, estados_df$sigla))
+  siglas_correspondentes <- c(estados_df$sigla, estados_df$sigla)  # manter sigla para nomes e siglas
+
+  purrr::map_chr(textos, function(t) {
+    encontrados <- nomes_siglas[stringr::str_detect(t, paste0("\\b", nomes_siglas, "\\b"))]
+    siglas_encontradas <- unique(siglas_correspondentes[nomes_siglas %in% encontrados])
+    if (length(siglas_encontradas) == 0) return(NA_character_)
+    paste(siglas_encontradas, collapse = "; ")
+  })
+}
+```
+
+```{r}
+unv <- unv %>% mutate(uf_end_jp = detectar_siglas_estados(endereco, estados_br))  %>% 
+  relocate(uf_end_jp, .after = endereco)
+```
+
+# Condicional das três variaveis.
+
+```{r}
+unv_end_uf_teste <- unv %>% select(numero_identificacao_inscricao,uf_end_jp,UF,uf_cep)
+```
+
+```{r}
+# Manipulação para checar as interseções, considerando NAs
+unv <- unv %>%
+  rowwise() %>%
+  mutate(
+    conferem_entre_si = {
+
+      
+      # Separar as UFs por vírgula em listas (remover espaços extras se houver)
+      ufs_1 <- str_split(uf_end_jp, ",")[[1]] %>% str_trim()
+      ufs_2 <- str_split(UF, ",")[[1]] %>% str_trim()
+      ufs_3 <- str_split(uf_cep, ",")[[1]] %>% str_trim()
+      
+      # Checar as interseções entre as UFs
+      inters_12 <- length(intersect(ufs_1, ufs_2)) > 0
+      inters_13 <- length(intersect(ufs_1, ufs_3)) > 0
+      inters_23 <- length(intersect(ufs_2, ufs_3)) > 0
+      
+      soma <- sum(c(inters_12, inters_13, inters_23))
+      
+      # Classificar de acordo com o número de interseções
+      if (soma == 3) {
+        "todas conferem"
+      } else if (soma == 2) {
+        "duas conferem"
+      } else {
+        "nenhuma confere"
+      }
+    }
+  ) %>%
+  ungroup()
+# Resultado final
+
+```
+
+Criar um coalesce escolher a variável que mais importa.
+
+A uf_final foca na ordem: o CEP, depois endereço e por fim a do DDD.
+
+A uf_final_cep foca na ordem:CEP, UF do DDD e por fim a do endereço
+
+```{r}
+
+unv <- unv %>%
+  mutate(
+    uf_final = coalesce(uf_cep,uf_end_jp,UF),
+    uf_final_cep = coalesce(uf_cep,UF,uf_end_jp),
+  ) %>% relocate(uf_final:uf_final_cep, .after = uf_cep)
+```
+
+# Região
+
+Primeiramente vamos tentar com a região das UFs por DDD
+
+```{r}
+unv <- unv %>%
+  mutate(regiao_ddd = case_when(
+    UF %in% c("AC", "AP", "AM", "PA", "RO", "RR", "TO") ~ "Norte",
+    UF %in% c("AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE") ~ "Nordeste",
+    UF %in% c("DF", "GO", "MT", "MS") ~ "Centro-Oeste",
+    UF %in% c("ES", "MG", "RJ", "SP") ~ "Sudeste",
+    UF %in% c("PR", "RS", "SC") ~ "Sul",
+    TRUE ~ NA_character_
+  ))
+```
+
+# Curso de Graduação
+
+Lendo todos os cursos de graduação, disponível no [Cine Brasil](https://download.inep.gov.br/pesquisas_estatisticas_indicadores_educacionais/cinebrasil/documentos/estrutura_cine_brasil.xlsx)
+
+```{r}
+library(readxl)
+cine_brasil <- read_xlsx("data/raw/estrutura_cine_brasil.xlsx")
+```
+
+Ajustando o nome das variáveis
+
+```{r}
+cine_brasil <- janitor::clean_names(cine_brasil)
+```
+
+```{r}
+cine_brasil_cursos <- cine_brasil %>% select(rotulo_cine_brasil) %>% unique()
+
+cine_brasil_cursos <- cine_brasil_cursos %>% mutate(rotulo_cine_brasil_lower = tolower(rotulo_cine_brasil))
+```
+
+Selecionando os cursos da UNV também
+
+```{r}
+unv_cursos <- unv %>% 
+  select(numero_identificacao_inscricao,graduacao_informe_a_area_universidade_e_ano_de_conclusao_caso_nao_possua_deixe_esse_campo_em_branco) %>% 
+  mutate(graduacao = graduacao_informe_a_area_universidade_e_ano_de_conclusao_caso_nao_possua_deixe_esse_campo_em_branco) %>%
+  mutate(graduacao_lower = tolower(graduacao))
+```
+
+Transformando tudo em letras minusculas
+
+```{r}
+unv_cursos <- unv_cursos %>%
+  mutate(
+    graduacao_lower = graduacao_lower %>%
+      str_to_lower() %>%                        # tudo minúsculo
+      stri_trans_general(id = "Latin-ASCII"))
+
+```
+
+Filtrar os NAs
+
+```{r}
+unv_cursos <- unv_cursos %>% filter(!is.na(graduacao_lower))
+```
+
+Tentei fazer fuzzymatching para encontrar os cursos e não funcionou muito bem. Fiz um dicionário para facilitar a captura. Apesar de não conseguirmos pegar tanto palavras escritas erradas, optei por fazer isso considerando que em média as pessoas em média usariam os termos de maneira mais razoável.
+
+```{r}
+
+dicionario_categorias <- c(
+  "politic"   = "Ciência Política",
+  "sociolog"  = "Ciências Sociais",
+  "sociais"   = "Ciências Sociais",     # para capturar "ciênc soc", "ciencias sociais"
+  "servi"    = "Serviço Social",
+  "antrop"    = "Antropologia",
+  "filo"      = "Filosofia",
+  "hist"      = "História",
+  "geogr"     = "Geografia",
+  "psico"     = "Psicologia",
+  "educa"     = "Educação/Pedagogia",
+  "comunic"   = "Comunicação Social",
+  "intern"    = "Relações Internacionais",
+  "jornal"    = "Jornalismo",
+  "publi"     = "Publicidade e Propaganda",
+  "econom"       = "Economia",
+  "admin"     = "Administração",
+  "public"    = "Gestão Pública",
+  "dire"      = "Direito",
+  "letras"    = "Letras",
+  "bibliot"   = "Biblioteconomia",
+  "museo"     = "Museologia",
+  "turis"     = "Turismo",
+  "design"    = "Design",
+  "tur"       = "Turismo",
+  "arqu"      = "Arquitetura",
+  "urban"     = "Urbanismo",
+  "engen"     = "Engenharia",
+  "enferm"    = "Enfermagem",
+  "nutri"     = "Nutrição",
+  "veterin"   = "Medicina Veterinária",
+  "farm"      = "Farmácia",
+  "biom"    = "Biomedicina",
+  "fisio"     = "Fisioterapia",
+  "pedag"     = "Pedagogia",
+  "contab"     = "Ciências Contábeis",
+  "recurs"     = "Recursos Humanos"
+
+
+
+)
+```
+
+Criar uma função para fazer essa categorização
+
+```{r}
+categorizar_curso <- function(texto, dicionario) {
+  categoria <- purrr::map_chr(names(dicionario), function(padrao) {
+    if (stringr::str_detect(texto, padrao)) return(dicionario[[padrao]])
+    else return(NA_character_)
+  })
+  first_match <- categoria[!is.na(categoria)][1]
+  ifelse(is.na(first_match), "Outros", first_match)
+}
+
+```
+
+Tentar usar a função para resolver
+
+```{r}
+# Aplicar a categorização
+unv_cursos_teste <- unv_cursos %>%
+  rowwise() %>%
+  mutate(categoria = categorizar_curso(graduacao_lower, dicionario_categorias)) %>%
+  ungroup()
+
+```
+
+Contando os cursos por categoria
+
+```{r}
+unv_cursos_teste %>% count(categoria)
+```
+
+```{r}
+# Criar um data frame só com a variável final e o ID
+unv_curso_select <- unv_cursos_teste %>% select(numero_identificacao_inscricao,categoria) %>% rename(categoria_graduacao = categoria)
+
+#Fazer um merge
+unv <- unv %>% 
+  left_join(unv_curso_select, by = c("numero_identificacao_inscricao")) %>% 
+  relocate(categoria_graduacao, .after = graduacao_informe_a_area_universidade_e_ano_de_conclusao_caso_nao_possua_deixe_esse_campo_em_branco)
+```
+
+Verificando as variáveis
+
+```{r,include = F}
+glimpse(unv)
+```
+
+# Deficiências
+
+Selecionando os cursos da UNV também
+
+```{r}
+unv_deficiencia <- unv %>% 
+  select(numero_identificacao_inscricao,caso_tenha_selecionado_pessoa_com_deficiencia_pessoa_pertencente_a_outros_povos_ou_comunidades_tradicionais_e_ou_pessoa_pertencente_a_outro_grupo_vulnerabilizado_especifique_sua_resposta_ate_1000_caracteres) %>% 
+  mutate(categoria_deficiencia = caso_tenha_selecionado_pessoa_com_deficiencia_pessoa_pertencente_a_outros_povos_ou_comunidades_tradicionais_e_ou_pessoa_pertencente_a_outro_grupo_vulnerabilizado_especifique_sua_resposta_ate_1000_caracteres) %>%
+  mutate(categoria_deficiencia_lower = tolower(categoria_deficiencia))
+```
+
+```{r}
+unv_deficiencia <- unv_deficiencia %>%
+  mutate(
+    categoria_deficiencia_lower = categoria_deficiencia_lower %>%
+      str_to_lower() %>%                        # tudo minúsculo
+      stri_trans_general(id = "Latin-ASCII"))
+
+```
+
+Filtrar os NAs
+
+```{r}
+unv_deficiencia <- unv_deficiencia %>% filter(!is.na(categoria_deficiencia_lower))
+```
+
+Criar um dicionário para coletar
+
+```{r}
+# Dicionário
+dicionario_deficiencia <- c(
+  "auditiv"      = "auditiva",
+  "visual"       = "visual",
+  "visao"           = "visual",
+  "ceg"          = "visual",
+  "surdez"       = "auditiva",
+  "intelect"     = "intelectual",
+  "mental"       = "intelectual",
+  "autis"        = "autismo",
+  "tea"          = "autismo",
+  "psicos"       = "psiquica",
+  "psiquic"      = "psiquica",
+  "fisic"        = "fisica",
+  "paralis"      = "fisica",
+  "múltipl"      = "multipla",
+  "multipla"     = "multipla",
+  "sindrom"      = "sindrome",
+  "down"         = "sindrome",
+  "locomoc"      = "fisica",
+  "mobilid"      = "fisica",
+  "reabilitad"   = "fisica",
+  "leitura"      = "visual",
+  "fala"         = "fala",
+  "fala/l"       = "fala",
+  "comunic"      = "comunicacao"
+)
+```
+
+```{r}
+categorizar_multiplas_binarias <- function(df, coluna_texto, dicionario) {
+  
+  # Garante que o texto esteja limpo: minúsculo e sem acentos
+  df <- df %>%
+    mutate(.texto_limpo = !!sym(coluna_texto) %>%
+             str_to_lower() %>%
+             stri_trans_general("Latin-ASCII"))
+  
+  # Pega os nomes únicos das categorias
+  categorias <- unique(dicionario)
+  
+  # Cria as colunas binarias por categoria (agrupando padrões)
+  df_binarias <- map_dfc(categorias, function(cat) {
+    padroes <- names(dicionario)[dicionario == cat]
+    tibble(!!cat := as.integer(str_detect(df$.texto_limpo, str_c(padroes, collapse = "|"))))
+  })
+
+  # Junta com o original (sem a coluna temporária)
+  df %>%
+    select(-.texto_limpo) %>%
+    bind_cols(df_binarias)
+}
+
+```
+
+```{r}
+unv_deficiencia <- unv_deficiencia %>%
+  mutate(desc_def = str_to_lower(categoria_deficiencia_lower) %>% stringi::stri_trans_general("Latin-ASCII")) %>%
+  rowwise() %>%
+  ungroup()
+
+```
+
+Aplicando a função
+
+```{r}
+unv_deficiencia_teste <- categorizar_multiplas_binarias(unv_deficiencia, "desc_def", dicionario_deficiencia)
+```
+
+Realizar um select da base de deficiência para escolher apenas as variáveis de interesse
+
+```{r}
+
+# Criar um data frame só com a variável final e o ID
+unv_deficiencia_select <- unv_deficiencia_teste %>% select(numero_identificacao_inscricao,auditiva:comunicacao) 
+
+#Fazer um merge
+unv <- unv %>% 
+  left_join(unv_deficiencia_select, by = c("numero_identificacao_inscricao")) %>% 
+  relocate(auditiva:comunicacao, .after = caso_tenha_selecionado_pessoa_com_deficiencia_pessoa_pertencente_a_outros_povos_ou_comunidades_tradicionais_e_ou_pessoa_pertencente_a_outro_grupo_vulnerabilizado_especifique_sua_resposta_ate_1000_caracteres)
+```
+
+# Orientação Sexual
+
+# Pessoas Trans
+
+O objetivo aqui é criar uma variável para pessoas trans.
+
+Selecionando os cursos da UNV também
+
+```{r}
+unv_trans <- unv %>% 
+  select(numero_identificacao_inscricao,caso_tenha_selecionado_pessoa_com_deficiencia_pessoa_pertencente_a_outros_povos_ou_comunidades_tradicionais_e_ou_pessoa_pertencente_a_outro_grupo_vulnerabilizado_especifique_sua_resposta_ate_1000_caracteres) %>% 
+  mutate(categoria_trans = caso_tenha_selecionado_pessoa_com_deficiencia_pessoa_pertencente_a_outros_povos_ou_comunidades_tradicionais_e_ou_pessoa_pertencente_a_outro_grupo_vulnerabilizado_especifique_sua_resposta_ate_1000_caracteres) %>%
+  mutate(categoria_trans_lower = tolower(categoria_trans))
+```
+
+```{r}
+unv_trans <- unv_trans %>%
+  mutate(
+    categoria_trans_lower = categoria_trans_lower %>%
+      str_to_lower() %>%                        # tudo minúsculo
+      stri_trans_general(id = "Latin-ASCII"))
+
+```
+
+Filtrar os NAs
+
+```{r}
+unv_trans <- unv_trans %>% filter(!is.na(categoria_trans_lower))
+```
+
+Criar um dicionário para coletar
+
+```{r}
+# 
+dicionario_trans <- c(
+  "transex"       = "pessoa_trans",
+  "transgener"    = "pessoa_trans",
+  "trans "         = "pessoa_trans",
+  "trans,"         = "pessoa_trans",        # geral, inclui tudo
+# geral, inclui tudo
+# geral, inclui tudo
+  "travest"       = "travesti",
+  "mulher trans"  = "mulher_trans",
+  "homem trans"   = "homem_trans",
+  "homemtrans"    = "homem_trans",
+  "mulhertrans"   = "mulher_trans",
+  "transfem"      = "mulher_trans",
+  "transmasc"     = "homem_trans",
+  "trans masc"    = "homem_trans",
+  "trans fem"     = "mulher_trans",
+  "transsexual"   = "pessoa_trans",  
+  "nao binár"     = "não_binaria",
+  "não binár"     = "não_binaria",
+  "nao binar"     = "não_binaria",
+  "não binar"     = "não_binaria",
+  "nao-binari"    = "não_binaria",
+  "não-binari"    = "não_binaria",
+  "agener"        = "não_binaria",
+  "genderqueer"   = "não_binaria",
+  "bigener"       = "não_binaria",
+  "fluxo de gênero" = "não_binaria",
+  "identidade trans" = "pessoa_trans",
+  "intersex" = "intersexo",
+  "inter sex" = "intersexo",
+  "nome social"   = "pessoa trans"         # indício frequente em bases
+)
+
+```
+
+```{r}
+categorizar_multiplas_binarias <- function(df, coluna_texto, dicionario) {
+  
+  # Garante que o texto esteja limpo: minúsculo e sem acentos
+  df <- df %>%
+    mutate(.texto_limpo = !!sym(coluna_texto) %>%
+             str_to_lower() %>%
+             stri_trans_general("Latin-ASCII"))
+  
+  # Pega os nomes únicos das categorias
+  categorias <- unique(dicionario)
+  
+  # Cria as colunas binarias por categoria (agrupando padrões)
+  df_binarias <- map_dfc(categorias, function(cat) {
+    padroes <- names(dicionario)[dicionario == cat]
+    tibble(!!cat := as.integer(str_detect(df$.texto_limpo, str_c(padroes, collapse = "|"))))
+  })
+
+  # Junta com o original (sem a coluna temporária)
+  df %>%
+    select(-.texto_limpo) %>%
+    bind_cols(df_binarias)
+}
+
+```
+
+```{r}
+unv_trans <- unv_trans %>%
+  mutate(desc_def = str_to_lower(categoria_trans_lower) %>% stringi::stri_trans_general("Latin-ASCII")) %>%
+  rowwise() %>%
+  ungroup()
+
+```
+
+Aplicando a função
+
+```{r}
+unv_trans_teste <- categorizar_multiplas_binarias(unv_trans, "desc_def", dicionario_trans)
+```
+
+Realizar um select da base de deficiência para escolher apenas as variáveis de interesse
+
+```{r}
+
+# Criar um data frame só com a variável final e o ID
+unv_trans_select <- unv_trans_teste %>% select(numero_identificacao_inscricao,pessoa_trans:intersexo) 
+
+#Fazer um merge
+unv <- unv %>% 
+  left_join(unv_trans_select, by = c("numero_identificacao_inscricao")) %>% 
+  relocate(pessoa_trans:intersexo, .after = caso_tenha_selecionado_pessoa_com_deficiencia_pessoa_pertencente_a_outros_povos_ou_comunidades_tradicionais_e_ou_pessoa_pertencente_a_outro_grupo_vulnerabilizado_especifique_sua_resposta_ate_1000_caracteres)
+```
+
+# Comparar novas variáveis com as antigas
+
+```{r}
+# Salva nomes ao fim;
+unv_var_final <- names(unv)
+```
+
+```{r}
+# Identifica as novas variáveis
+novas_colunas <- setdiff(unv_var_final, unv_var_janitor)
+
+unv_var_novas <- as.data.frame(novas_colunas)
+
+
+# Renomeia adicionando "_jp"
+unv <- unv %>%
+  rename_with(~ paste0(.x, "_jp"), .cols = all_of(novas_colunas))
+
+```
+
+```{r}
+# Salva nomes ao fim;
+unv_var_final <- names(unv)
+
+novas_colunas <- setdiff(unv_var_final, unv_var_janitor)
+
+unv_var_novas <- as.data.frame(novas_colunas)
+```
+
+Salvando essas novas colunas
+
+```{r}
+write_xlsx(unv_var_novas, "novos_nomes.xlsx")
+```
+
+Agora salvar todaas as variáveis novas
+
+```{r}
+unv_var_final_save<- names(unv)
+unv_var_final_save <- as.data.frame(unv_var_final_save)
+
+write_xlsx(unv_var_final_save, "nomes_finais.xlsx")
+```
+
+# Agora vamos salvar a base completa
+
+Primeiro criando um diretório de dados intermediários
+
+```{r}
+#Criando um diretório. Só precisa fazer isso UMA VEZ
+dir.create("data/intermediate")
+```
+
+Salvando em csv e .xlsx
+
+```{r}
+write.csv2(unv, "data/intermediate/unv_intermediate.csv")
+write_xlsx(unv, "data/intermediate/unv_intermediate.xlsx")
+#salvar tbm em parquet
+```
+
+# Agora vamos salvar bases para analise
+
+```{r}
+variaveis_sensiveis <- c("nome_completo","endereco","cep_extraido_jp","cep_limpo_jp","telefone_xx_xxxx_xxxx","numero_limpo_jp","numero_limpo_jp",
+                              "e_mail",
+                         "esta_e_uma_selecao_para_vagas_afirmativas_por_gentileza_informe_sua_identificacao_etnico_racial","esta_e_uma_selecao_para_vagas_afirmativas_voce_e_uma_pessoa_lgbtqiapn",
+                            "esta_e_uma_selecao_para_vagas_afirmativas_por_gentileza_informe_se_voce_se_identifica_como_selecionar_todos_que_se_aplicam",
+                            "caso_tenha_selecionado_pessoa_com_deficiencia_pessoa_pertencente_a_outros_povos_ou_comunidades_tradicionais_e_ou_pessoa_pertencente_a_outro_grupo_vulnerabilizado_especifique_sua_resposta_ate_1000_caracteres",
+              "caso_tenha_selecionado_pessoa_com_deficiencia_por_gentileza_indique_se_voce_precisa_de_acomodacoes_especificas_para_participar_da_etapa_de_entrevistas_buscaremos_atender_as_solicitacoes_da_melhor_forma_dentro_de_nossas_possibilidades",
+              "faca_aqui_o_upload_do_seu_curriculo_e_ou_carta_de_motivacao")
+
+unv_analise <- unv %>% select(-all_of(variaveis_sensiveis))
+```
+
+Salvando em csv, .xlsx e parquet
+
+```{r}
+
+dir.create("data/final")
+
+
+write.csv2(unv_analise, "data/final/unv_analise.csv")
+write_xlsx(unv_analise, "data/final/unv_analise.xlsx")
+
+#salvar tbm em parquet
+
+arrow::write_parquet(unv_analise, "data/final/unv_analise.parquet" )
+```
+
+Mudar o nome das variáveis
+
+```{r}
+# Lê a planilha com colunas: antigo, novo
+renomear <- read_xlsx("comparativo_nomes_ajustado.xlsx")
+
+# Gera o vetor renomeando
+rename_vec <- setNames(renomear$depois, renomear$depois_reduzido)
+
+# Aplica o rename
+unv_analise_rename <- unv %>% rename(!!!rename_vec)
+```
+
+Salvando em csv, .xlsx e parquet
+
+```{r}
+
+dir.create("data/final/rename")
+
+
+write.csv2(unv_analise_rename, "data/final/rename/unv_analise_rename.csv")
+write_xlsx(unv_analise_rename, "data/final/rename/unv_analise_rename.xlsx")
+
+#salvar tbm em parquet
+
+arrow::write_parquet(unv_analise_rename, "data/final/rename/unv_analise_rename.parquet")
+```

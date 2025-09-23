@@ -1,0 +1,279 @@
+---
+title: "Basometer"
+author: "Marcus Vinícius Torres"
+institute: "Federal University of Pernambuco"
+format: html
+editor: visual
+self-contained: true
+self-contained-math: true
+---
+
+<!-- ATTENTION  -->
+
+<!-- THIS  -->
+
+<!-- QUAISQUER CÓPIAS DAS INFORMAÇÕES QUE AQUI ESTÃO NECESSITAM DE APROVAÇÃO PRÉVIA  -->
+
+# Intro
+
+O objetivo desse código é criar de maneira mais sistemática uma estrtuturação de ideologia partidária no Brasil usando como parâmetro dados dos trabalhos de Bolonhesi e Codato, além do Brazilian Legislative Survey. 
+
+
+# Baixando os pacotes de dados.
+
+```{r}
+#Apagar o enviroment
+rm(list = ls())
+```
+
+```{r}
+#install.packages(pacman)
+library(pacman)
+#OBSERVAÇÃO: NEM TODOS OS PACOTES SAO NECESSÁRIOS PARA ESSE PROJETO
+p_load(readxl,writexl,skimr,dplyr,basedosdados,data.table, dplyr,genderBR, tidyverse, vroom,stringr, stringi, tm, reactable,lubridate,dygraphs, stargazer, geobr,sf,rio,readr,tidyr,classInt,Microsoft365R,readODS,jsonlite,fuzzyjoin,readxl, purrr,datadictionary,arrow,geobr,tidyverse,lubridate,stringi, readxl,stringr,dttr2, arsenal,janitor,diffdf,easyr,anytime,data.table,hms)
+
+```
+
+
+# Lendo os parametros como estão no paper
+```{r}
+partidos_yuri <- data.frame(
+  Partido = c(
+    "PT", "PCdoB", "PSOL",
+    "PV", "PPL", "PDT", "Cidadania", "Solidariedade", "Rede", "PSB",
+    "PROS", "PSDB", "PSD", "PAN", "MDB", "Avante",
+    "PMN", "PHS", "Podemos", "DEM", "PTC", "PMB", "União", "PRB", "PL", "PP", "DC",
+    "PSL", "PRP", "Republicanos", "Patriota", "PRONA", "Novo",
+    "PSC", "PTB", "PRTB",
+    "Sem_Partido"
+  ),
+  Posicao = c(
+    "Esquerda", "Esquerda", "Esquerda",
+    "Centro-esquerda", "Centro-esquerda", "Centro-esquerda", "Centro-esquerda",
+    "Centro-esquerda", "Centro-esquerda", "Centro-esquerda",
+    "Centro", "Centro", "Centro", "Centro", "Centro", "Centro",
+    "Centro-direita", "Centro-direita", "Centro-direita", "Centro-direita",
+    "Centro-direita", "Centro-direita", "Centro-direita", "Centro-direita",
+    "Centro-direita", "Centro-direita", "Centro-direita",
+    "Direita", "Direita", "Direita", "Direita", "Direita", "Direita",
+    "Extrema-direita", "Extrema-direita", "Extrema-direita",
+    NA
+  )
+)
+
+partidos_yuri
+
+```
+
+# Ideologia Partidária de Bolonhesi e Codato (2022)
+```{r}
+partidos_bolonhesi_codato <- data.frame(
+  Partido = c(
+    "PSTU","PCO","PCB","PSOL","PCdoB","PT","PDT","PSB","Rede","PPS","PV",
+    "PTB","Avante","SDD","PMN","PMB","PHS","MDB","PSD","PSDB","Podemos","PPL",
+    "PRTB","Pros","PRP","PRB","PR","PTC","DC","PSL","Novo","Progressistas",
+    "PSC","Patriota","DEM"
+  ),
+  Media = c(
+    0.51,0.61,0.91,1.28,1.92,2.97,3.92,4.05,4.77,4.92,5.29,
+    6.10,6.32,6.50,6.88,6.90,6.96,7.01,7.09,7.11,7.24,7.27,
+    7.45,7.47,7.59,7.78,7.78,7.86,8.11,8.11,8.13,8.20,
+    8.33,8.55,8.57
+  ),
+  Mediana = c(
+    0,0,0.9,1,2,3,4,4,4,5,5,
+    6,6,7,7,7,7,7,7,7,7,8,
+    8,7,7,8,8,8,8,8,8,8,
+    8,9,9
+  ),
+  Moda = c(
+    0,0,0,1,2,3,4,4,4,4,6,
+    7,6,6,7,7,7,6,6,6,8,10,
+    7,8,7,8,8,8,8,10,10,8,
+    10,10,10
+  ),
+  Desvio_Padrao = c(
+    1.13,1.19,1.27,1.18,1.50,1.34,1.48,1.59,1.72,2.36,1.79,
+    2.18,2.27,1.98,2.10,2.03,1.94,1.66,1.72,1.69,1.76,2.68,
+    1.98,1.58,1.57,1.48,1.53,1.65,1.55,1.69,1.72,1.53,
+    1.52,1.58,1.40
+  ),
+  N = c(
+    514,509,512,513,512,504,483,468,451,472,435,
+    481,451,469,444,431,443,453,479,496,469,465,
+    462,472,472,495,488,480,503,489,474,496,
+    505,490,511
+  ),
+  Coef_Variacao = c(
+    220.23,196.03,139.91,92.45,78.26,44.99,37.84,39.33,35.99,47.83,33.83,
+    35.74,35.88,30.51,30.48,29.46,27.82,23.71,24.22,23.81,24.27,36.87,
+    26.52,24.47,20.66,19.97,19.61,20.97,19.09,20.79,21.17,18.69,
+    18.23,18.54,16.31
+  )
+)
+
+```
+
+## Mergindo os dois
+```{r}
+library(dplyr)
+
+ideologia_partidos_bolonhesi_codato_yuri <- partidos_bolonhesi_codato %>%
+  right_join(partidos_yuri, by = "Partido")
+
+ideologia_partidos_bolonhesi_codato_yuri <-
+ideologia_partidos_bolonhesi_codato_yuri %>% select(-c("Mediana", "Moda","Desvio_Padrao","N","Coef_Variacao")) %>% rename (posicao_yuri = Posicao,media_bolonhesi=Media) %>%
+  mutate(
+    classificacao_media_bolonhesi = case_when(
+      media_bolonhesi >= 0  & media_bolonhesi < 1.5 ~ "Extrema Esquerda",
+      media_bolonhesi >= 1.5 & media_bolonhesi < 3.5 ~ "Esquerda",
+      media_bolonhesi >= 3.5 & media_bolonhesi < 4.5 ~ "Centro-Esquerda",
+      media_bolonhesi >= 4.5 & media_bolonhesi < 5.5 ~ "Centro",
+      media_bolonhesi >= 5.5 & media_bolonhesi < 6.5 ~ "Centro-Direita",
+      media_bolonhesi >= 6.5 & media_bolonhesi < 8.5 ~ "Direita",
+      media_bolonhesi >= 8.5 & media_bolonhesi <= 10 ~ "Extrema Direita",
+      TRUE ~ NA_character_
+    )
+  ) %>% relocate(classificacao_media_bolonhesi,.after = media_bolonhesi)
+
+```
+
+
+# Brazilian Legislative Survey (BLS)
+
+```{r}
+load("BLS/BLS9_full.RData")
+```
+
+```{r}
+bls_select <- bls %>% select(wave,lrclass:lrnovo)
+```
+```{r}
+# Exemplo: supondo que sua base se chame df
+bls_select_longer <- bls_select %>%
+  # renomear colunas: tirar "lr" e deixar tudo maiúsculo
+  rename_with(~ toupper(str_remove(.x, "^lr")), starts_with("lr")) %>%
+  # transformar em formato long
+  pivot_longer(
+    cols = -wave,
+    names_to = "party",
+    values_to = "ideology"
+  ) %>%
+  # substituir -999 por NA
+  mutate(ideology = na_if(ideology, -999)) %>% 
+  filter(party!="CLASS")
+```
+
+## Fazer o summary
+```{r}
+bls_select_longer_summary <- bls_select_longer %>% group_by(wave,party) %>% summarise(n = n(), mean_ideology = round(mean(ideology,na.rm = TRUE),2))
+```
+
+## Valores
+```{r}
+ideologia_partidos <- bls_select_longer %>%
+  group_by(party) %>%
+  summarise(
+    media = mean(round(ideology,2), na.rm = TRUE),
+    n = sum(!is.na(ideology))
+  ) %>%
+  ungroup() %>%
+  mutate(
+    classificacao = case_when(
+      media >= 0  & media < 1.5 ~ "Extrema Esquerda",
+      media >= 1.5 & media < 3.5 ~ "Esquerda",
+      media >= 3.5 & media < 4.5 ~ "Centro-Esquerda",
+      media >= 4.5 & media < 5.5 ~ "Centro",
+      media >= 5.5 & media < 6.5 ~ "Centro-Direita",
+      media >= 6.5 & media < 8.5 ~ "Direita",
+      media >= 8.5 & media <= 10 ~ "Extrema Direita",
+      TRUE ~ NA_character_
+    )
+  )
+```
+
+Fazendo o de para
+```{r}
+library(dplyr)
+
+# Exemplo de dicionário de correspondência
+depara <- tibble(
+  Partido = c("PT", "PCdoB", "PSOL", "PV", "PPL", "PDT", "Cidadania", "Solidariedade", 
+            "Rede", "PSB", "PROS", "PSDB", "PSD", "PAN", "MDB", "Avante", "PMN", 
+            "PHS", "Podemos", "DEM", "PTC", "PMB", "União", "PRB", "PL", "PP", "DC", 
+            "PSL", "PRP", "Republicanos", "Patriota", "PRONA", "Novo", "PSC", "PTB", 
+            "PRTB", "Sem_Partido"),
+  
+  party = c("PT", "PCDOB", "PSOL", "PV", "PPL", "PDT", "CID", "SD", 
+            "REDE", "PSB", "PROS", "PSDB", "PSD", NA, "MDB", "AVANTE", "PMN", 
+            "PHS", "PODE", "DEM", "PTC", "PMB", "UNIÃO", "PRB", "PL", "PP", "DC", 
+            "PSL", "PRP", "REP", "PATRIOTA", "PRONA", "NOVO", "PSC", "PTB", 
+            "PRTB", NA)
+)
+# Exemplo de uso num merge
+
+
+```
+
+```{r}
+ideologia_partidos_bls <- ideologia_partidos %>% full_join(depara, by = c("party")) %>% relocate(Partido, .after = party) %>% rename(party_bls = party, media_bls = media, classificacao_media_bls = classificacao)
+```
+
+```{r}
+ideologia_partidos_bls_yuri <- ideologia_partidos_bls %>% full_join(partidos_yuri, by = "Partido") %>% rename(partido_yuri = Partido, posicao_yuri = Posicao)
+```
+# Modificações PARTIDÁRIAS
+
+PAN -> PTB
+PTB -> AVANTE
+PMN -> PPS
+PHS -> PODEMOS
+PTC -> AGIR (Não tem na base)
+PSL + DEM -> União
+PSDC -> DC
+PPL -> PCdoB
+
+
+
+# Mergindo e relocando
+```{r}
+ideologia_partidos_bls_yuri_bolonhesi_codato <- ideologia_partidos_bls_yuri %>% full_join(ideologia_partidos_bolonhesi_codato_yuri, by = c("partido_yuri" = "Partido","posicao_yuri"="posicao_yuri")) %>% relocate(media_bolonhesi,.after = media_bls) %>% relocate(classificacao_media_bolonhesi, .after = classificacao_media_bls) %>% select( -n)
+```
+
+# Fazendo o coalesce para colocar os que não tínhamos no BLS
+```{r}
+ideologia_partidos_final <- ideologia_partidos_bls_yuri_bolonhesi_codato %>% mutate(ideologia_final = coalesce(classificacao_media_bls,classificacao_media_bolonhesi))
+```
+# Fazendo as alterações a mão dos que não possuiram nem com o coalesce
+```{r}
+# União foi a junção do DEM com o PSL. Mesmo com isso, os indicadores variam entre Direita e Extrema direita. Decidi ficar com Direita pelos valores estarem mais próximos desse indicador
+
+# O PAN virou PMB, partido avaliado como Direita
+
+#Prona se fundiu ao PL dando origem ao PR. Todos considerados de direita
+
+
+ideologia_partidos_final <- ideologia_partidos_final %>%
+  mutate(ideologia_final = case_when(
+    partido_yuri == "União" ~ "Direita",# altera PSDB
+    partido_yuri == "PAN" ~ "Direita",# altera PSDB
+    partido_yuri == "PRONA" ~ "Direita",# altera PSDB
+    TRUE ~ ideologia_final               # mantém o resto
+  ))
+
+```
+
+# Salvando
+```{r}
+dir.create("data")
+dir.create("data/final")
+
+
+write.csv2(ideologia_partidos_final, "data/final/ideologia_partidos_final.csv")
+write_xlsx(ideologia_partidos_final, "data/final/ideologia_partidos_final.xlsx")
+
+#salvar tbm em parquet
+
+arrow::write_parquet(ideologia_partidos_final, "data/final/ideologia_partidos_final.parquet")
+```
+

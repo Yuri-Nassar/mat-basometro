@@ -1,0 +1,28 @@
+---
+title: "Coletando via DataJudScraper"
+format: html
+editor: visual
+---
+
+## Pacotes
+
+```{r packages}
+#rm(list = ls())
+library(pacman)
+p_load(rvest,httr,tidyr,dplyr,purrr,stringr,readxl, tibble,dbplyr,datajudScraper,devtools)
+```
+
+```{r}
+devtools::install_github("abjur/datajudScraper")
+
+```
+
+```{r}
+ojs_sobral <- datajudScraper::ojs |> 
+  dplyr::filter(
+    sigla_tribunal == "TJPE",
+  ) |> 
+  dplyr::select(-file)
+
+knitr::kable(ojs_sobral)
+```
