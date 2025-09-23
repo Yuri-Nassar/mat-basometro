@@ -3,7 +3,7 @@
 mat-basometro is a Python-based project that provides the data and code necessary to reproduce the findings of a study published in EPJ Data Science. This project facilitates the exploration and analysis of the research, allowing users to delve into the data, replicate the experiments, and potentially extend the work with their own analysis.
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![License](https://img.shields.io/badge/license-MIT License-green)
+![GitHub License](https://img.shields.io/github/license/Yuri-Nassar/mat-basometro)
 ![Stars](https://img.shields.io/github/stars/Yuri-Nassar/mat-basometro?style=social)
 ![Forks](https://img.shields.io/github/forks/Yuri-Nassar/mat-basometro?style=social)
 
