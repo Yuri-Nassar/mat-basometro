@@ -1,0 +1,1 @@
+"0","bls_select_longer_summary <- bls_select_longer %>% group_by(wave,party) %>% summarise(n = n(), mean_ideology = round(mean(ideology,na.rm = TRUE),2))"

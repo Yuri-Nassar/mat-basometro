@@ -1,0 +1,1 @@
+"0","ideologia_partidos_bls_yuri <- ideologia_partidos_bls %>% full_join(partidos_yuri, by = ""Partido"") %>% rename(partido_yuri = Partido, posicao_yuri = Posicao)"

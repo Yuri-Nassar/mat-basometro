@@ -1,5 +1,12 @@
 # CSV files
-*.csv
+*basometro_v1.csv
+*basometro_v2.csv
+*edr.csv
+*lcss.csv
+*msm.csv
+*muitas.csv
+*basometro_idVotacao.csv
+*governments_clustering_evaluation.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

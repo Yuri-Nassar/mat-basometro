@@ -1,0 +1,1 @@
+"0","ideologia_partidos_bls_yuri_bolonhesi_codato <- ideologia_partidos_bls_yuri %>% full_join(ideologia_partidos_bolonhesi_codato_yuri, by = c(""partido_yuri"" = ""Partido"",""posicao_yuri""=""posicao_yuri"")) %>% relocate(media_bolonhesi,.after = media_bls) %>% relocate(classificacao_media_bolonhesi, .after = classificacao_media_bls) %>% select( -n)"

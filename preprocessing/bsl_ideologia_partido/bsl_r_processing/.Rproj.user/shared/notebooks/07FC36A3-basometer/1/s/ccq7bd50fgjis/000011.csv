@@ -1,0 +1,1 @@
+"0","ideologia_partidos_final <- ideologia_partidos_bls_yuri_bolonhesi_codato %>% mutate(ideologia_final = coalesce(classificacao_media_bls,classificacao_media_bolonhesi))"

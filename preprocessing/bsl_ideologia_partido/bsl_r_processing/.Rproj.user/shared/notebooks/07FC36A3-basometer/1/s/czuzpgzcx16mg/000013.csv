@@ -1,0 +1,1 @@
+"0","ideologia_partidos_bls <- ideologia_partidos %>% full_join(depara, by = c(""party"")) %>% relocate(Partido, .after = party) %>% rename(party_bls = party, media_bls = media, classificacao_media_bls = classificacao)"

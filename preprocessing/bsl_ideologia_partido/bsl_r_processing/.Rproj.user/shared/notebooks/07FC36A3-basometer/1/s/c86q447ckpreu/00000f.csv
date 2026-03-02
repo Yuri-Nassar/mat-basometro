@@ -1,0 +1,2 @@
+"0","#Apagar o enviroment"
+"0","rm(list = ls())"

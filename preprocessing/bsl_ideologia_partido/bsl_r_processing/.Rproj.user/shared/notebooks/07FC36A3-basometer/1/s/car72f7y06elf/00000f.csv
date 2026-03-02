@@ -1,0 +1,5 @@
+"0","#install.packages(pacman)"
+"0","library(pacman)"
+"0","#OBSERVAÇÃO: NEM TODOS OS PACOTES SAO NECESSÁRIOS PARA ESSE PROJETO"
+"0","p_load(readxl,writexl,skimr,dplyr,basedosdados,data.table, dplyr,genderBR, tidyverse, vroom,stringr, stringi, tm, reactable,lubridate,dygraphs, stargazer, geobr,sf,rio,readr,tidyr,classInt,Microsoft365R,readODS,jsonlite,fuzzyjoin,readxl, purrr,datadictionary,arrow,geobr,tidyverse,lubridate,stringi, readxl,stringr,dttr2, arsenal,janitor,diffdf,easyr,anytime,data.table,hms)"
+"0",""
